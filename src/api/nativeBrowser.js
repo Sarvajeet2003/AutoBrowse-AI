@@ -4,8 +4,58 @@ const { processCommand } = require('../utils/nlProcessor');
 
 const router = express.Router();
 
-// Make sure the route is properly defined
-router.post('/', async(req, res) => {
+router.post('/launch', async(req, res) => {
+    try {
+        const { useNativeBrowser, proxy, extensions } = req.body;
+
+        // Initialize browser with options
+        await browserController.initialize({
+            useNativeBrowser: useNativeBrowser === true,
+            proxy: proxy,
+            extensions: extensions
+        });
+
+        return res.json({
+            success: true,
+            message: `Browser ${useNativeBrowser ? 'native' : 'Playwright'} launched successfully`,
+            usingNativeBrowser: browserController.usingNativeBrowser
+        });
+    } catch (error) {
+        console.error('Error launching browser:', error);
+        return res.status(500).json({
+            success: false,
+            error: error.message || 'An unknown error occurred'
+        });
+    }
+});
+
+router.post('/login', async(req, res) => {
+    try {
+        const { url, username, password } = req.body;
+
+        if (!url || !username || !password) {
+            return res.status(400).json({
+                success: false,
+                error: 'URL, username and password are required'
+            });
+        }
+
+        const success = await browserController.login(url, { username, password });
+
+        return res.json({
+            success: success,
+            message: success ? 'Login successful' : 'Login failed'
+        });
+    } catch (error) {
+        console.error('Error during login:', error);
+        return res.status(500).json({
+            success: false,
+            error: error.message || 'An unknown error occurred'
+        });
+    }
+});
+
+router.post('/command', async(req, res) => {
     try {
         const { command } = req.body;
 
@@ -16,7 +66,7 @@ router.post('/', async(req, res) => {
             });
         }
 
-        console.log('Received command:', command);
+        console.log('Received command for native browser:', command);
 
         // Process the command
         const result = await processCommand(command);
@@ -66,7 +116,6 @@ router.post('/', async(req, res) => {
             } catch (actionError) {
                 console.error(`Error executing action ${action.type}:`, actionError);
                 actionResults.failed.push(action.type);
-                // Continue with next action instead of failing completely
             }
         }
 
@@ -76,7 +125,6 @@ router.post('/', async(req, res) => {
                 'Command executed successfully' : 'Command executed with some errors',
             details: actionResults
         });
-
     } catch (error) {
         console.error('Error executing command:', error);
         return res.status(500).json({
@@ -86,15 +134,26 @@ router.post('/', async(req, res) => {
     }
 });
 
-// Add a GET method for testing
-router.get('/', (req, res) => {
-    res.json({
-        success: true,
-        message: 'Interact API is running',
-        usage: 'Send a POST request with a "command" property in the request body'
-    });
+router.post('/close', async(req, res) => {
+    try {
+        await browserController.close();
+        return res.json({
+            success: true,
+            message: 'Browser closed successfully'
+        });
+    } catch (error) {
+        console.error('Error closing browser:', error);
+        return res.status(500).json({
+            success: false,
+            error: error.message || 'An unknown error occurred'
+        });
+    }
 });
 
+// Define your routes here
+router.get('/', (req, res) => {
+    res.json({ message: 'Native browser API is working' });
+});
 
-// Should be changed to:
+// Export the router
 module.exports = router;

@@ -25,9 +25,10 @@ async function processCommand(command) {
             });
 
             // Extract search query if present
-            if (command.toLowerCase().includes('search for')) {
-                const searchMatch = command.match(/search for (.*?)(?:,|\s+and|\s+filter|\s*$)/i);
-                const searchQuery = searchMatch ? searchMatch[1] : '';
+            if (command.toLowerCase().includes('search for') || command.toLowerCase().includes('find')) {
+                // Improved regex to handle more query formats
+                const searchMatch = command.match(/(?:search for|find|look for) ["']?(.*?)["']?(?:,|\s+and|\s+filter|\s+on|\s*$)/i);
+                const searchQuery = searchMatch ? searchMatch[1].trim() : '';
 
                 if (searchQuery) {
                     // Use multiple selectors for YouTube search input
@@ -40,7 +41,8 @@ async function processCommand(command) {
                                 'input[name="search_query"]',
                                 'input[id="search"]',
                                 'input[aria-label="Search"]',
-                                'input.ytd-searchbox'
+                                'input.ytd-searchbox',
+                                'input[placeholder*="Search"]' // Added more generic selector
                             ],
                             text: searchQuery
                         }

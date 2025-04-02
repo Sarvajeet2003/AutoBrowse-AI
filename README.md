@@ -18,7 +18,6 @@ AutoBrowse-AI is an intelligent browser automation agent that allows users to co
 - **AI/NLP**: Google Gemini API
 - **Frontend**: HTML, CSS, Bootstrap, JavaScript
 
-## Getting Started
 
 ### Prerequisites
 
@@ -46,9 +45,14 @@ The current implementation (Level 1) includes:
 - Special handling for Amazon (including CAPTCHA detection)
 - Data extraction from web pages
 - Web interface for interaction
-## Future Enhancements (Planned)
-- Support for more complex multi-step workflows
-- Enhanced error recovery
-- User authentication and saved command history
-- Additional website-specific optimizations
-- Mobile device simulation
+
+## Level 2 Implementation
+The enhanced implementation (Level 2) includes:
+
+- Native browser control using OS-level APIs for Chrome/Firefox
+- Direct integration with locally installed browsers
+- Complete automation flows for login, search, and data extraction
+- Structured data extraction API with selector-based parsing
+- Proxy configuration for enhanced privacy and geo-targeting
+- Browser extension support for additional functionality
+- Advanced anti-detection measures to avoid automation blocking
