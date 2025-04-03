@@ -1,0 +1,44 @@
+[
+  {
+    "id": "de0905bc-c8c3-44ee-a07d-c6bd6b34d5fc",
+    "name": "Daily Google Search",
+    "schedule": "0 9 * * *",
+    "workflow": [
+      {
+        "type": "navigate",
+        "params": {
+          "url": "google.com"
+        }
+      },
+      {
+        "type": "type",
+        "params": {
+          "selector": "input[name=\"q\"]",
+          "text": "daily news"
+        }
+      }
+    ],
+    "createdAt": "2025-04-03T10:21:06.909Z"
+  },
+  {
+    "id": "7b26875c-0c88-4d83-a263-09b3bb94a10b",
+    "name": "Daily Google Search",
+    "schedule": "0 9 * * *",
+    "workflow": [
+      {
+        "type": "navigate",
+        "params": {
+          "url": "google.com"
+        }
+      },
+      {
+        "type": "type",
+        "params": {
+          "selector": "input[name=\"q\"]",
+          "text": "daily news"
+        }
+      }
+    ],
+    "createdAt": "2025-04-03T10:21:41.794Z"
+  }
+]

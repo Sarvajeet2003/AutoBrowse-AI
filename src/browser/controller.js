@@ -3,7 +3,6 @@ const { exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-
 class BrowserController {
     constructor() {
         this.browser = null;
@@ -801,6 +800,200 @@ class BrowserController {
         return result;
     }
 
+    // Complete automation flow method
+    async runAutomationFlow(steps) {
+        console.log('Starting automation flow with', steps.length, 'steps');
+        const results = {
+            success: true,
+            steps: [],
+            data: {}
+        };
+        
+        try {
+            for (let i = 0; i < steps.length; i++) {
+                const step = steps[i];
+                console.log(`Executing step ${i+1}/${steps.length}: ${step.type}`);
+                
+                const stepResult = {
+                    type: step.type,
+                    success: false,
+                    error: null
+                };
+                
+                try {
+                    switch (step.type) {
+                        case 'navigate':
+                            stepResult.success = await this.navigate(step.url);
+                            break;
+                            
+                        case 'login':
+                            stepResult.success = await this.login(step.url, step.credentials);
+                            break;
+                            
+                        case 'type':
+                            stepResult.success = await this.type(step.selector, step.text);
+                            break;
+                            
+                        case 'click':
+                            stepResult.success = await this.click(step.selector, step.options);
+                            break;
+                            
+                        case 'wait':
+                            await this.delay(step.ms || 3000);
+                            stepResult.success = true;
+                            break;
+                            
+                        case 'extract':
+                            const extractedData = await this.extractData(step.selectors, step.options);
+                            results.data[step.key || `extraction_${i}`] = extractedData;
+                            stepResult.success = true;
+                            break;
+                            
+                        case 'extractWithPagination':
+                            const paginatedData = await this.extractDataWithPagination(step.selectors, step.options);
+                            results.data[step.key || `pagination_${i}`] = paginatedData;
+                            stepResult.success = true;
+                            break;
+                            
+                        case 'screenshot':
+                            const screenshotPath = await this.captureScreenshot(step.selector, step.options);
+                            if (screenshotPath) {
+                                stepResult.success = true;
+                                stepResult.screenshotPath = screenshotPath;
+                            }
+                            break;
+                            
+                        default:
+                            throw new Error(`Unknown step type: ${step.type}`);
+                    }
+                } catch (stepError) {
+                    stepResult.success = false;
+                    stepResult.error = stepError.message;
+                    console.error(`Error in step ${i+1}: ${stepError.message}`);
+                    
+                    // Check if we should continue on error
+                    if (!step.continueOnError) {
+                        results.success = false;
+                        results.steps.push(stepResult);
+                        throw new Error(`Automation flow stopped at step ${i+1} due to error: ${stepError.message}`);
+                    }
+                }
+                
+                results.steps.push(stepResult);
+                
+                // If step failed and we're not continuing on error
+                if (!stepResult.success && !step.continueOnError) {
+                    results.success = false;
+                    throw new Error(`Automation flow stopped at step ${i+1} due to failure`);
+                }
+            }
+            
+            console.log('Automation flow completed successfully');
+            return results;
+        } catch (error) {
+            console.error(`Automation flow error: ${error.message}`);
+            results.success = false;
+            results.error = error.message;
+            return results;
+        }
+    }
+    
+    // Enhanced extractData method with pagination support
+    async extractDataWithPagination(selectors, options = {}) {
+        const page = await this.getPage();
+        let results = [];
+        let currentPage = 1;
+        const maxPages = options.maxPages || 5;
+        
+        while (currentPage <= maxPages) {
+            console.log(`Extracting data from page ${currentPage}/${maxPages}`);
+            
+            // Extract data from current page
+            const pageData = await this.extractData(selectors, options);
+            
+            // Add page number to metadata
+            pageData.metadata.pageNumber = currentPage;
+            
+            // Add the data to results
+            results.push(pageData);
+            
+            // Check if we should continue to next page
+            if (currentPage >= maxPages) {
+                console.log(`Reached maximum number of pages (${maxPages})`);
+                break;
+            }
+            
+            // Try to find and click the next page button
+            const nextPageSelectors = options.nextPageSelectors || [
+                'a:has-text("Next")',
+                'a:has-text("Next Page")',
+                'button:has-text("Next")',
+                'button:has-text("Next Page")',
+                'a.next',
+                'button.next',
+                'a[rel="next"]',
+                'li.next a',
+                'a[aria-label="Next page"]',
+                'a.pagination-next',
+                'a.pagination__next',
+                'a.pagination-item--next'
+            ];
+            
+            // Try to click the next page button
+            const nextPageClicked = await this.click(nextPageSelectors);
+            if (!nextPageClicked) {
+                console.log('Could not find next page button, stopping pagination');
+                break;
+            }
+            
+            // Wait for the next page to load
+            await this.delay(options.pageLoadDelay || 3000);
+            
+            // Increment page counter
+            currentPage++;
+        }
+        
+        return {
+            metadata: {
+                totalPages: currentPage,
+                totalResults: results.length,
+                timestamp: new Date().toISOString()
+            },
+            pages: results
+        };
+    }
+    
+    // Add screenshot capture functionality
+    async captureScreenshot(selector, options = {}) {
+        const page = await this.getPage();
+        try {
+            // Generate filename if not provided
+            const filename = options.filename || `screenshot-${Date.now()}.png`;
+            const fullPath = path.resolve(options.path || '.', filename);
+            
+            if (selector) {
+                // Capture screenshot of specific element
+                await page.waitForSelector(selector, { timeout: 5000 });
+                const element = await page.$(selector);
+                if (element) {
+                    await element.screenshot({ path: fullPath });
+                    console.log(`Captured screenshot of element ${selector} to ${fullPath}`);
+                    return fullPath;
+                } else {
+                    throw new Error(`Element not found: ${selector}`);
+                }
+            } else {
+                // Capture full page screenshot
+                await page.screenshot({ path: fullPath, fullPage: options.fullPage || false });
+                console.log(`Captured full page screenshot to ${fullPath}`);
+                return fullPath;
+            }
+        } catch (error) {
+            console.error(`Screenshot capture error: ${error.message}`);
+            return null;
+        }
+    }
+    
     async close() {
         try {
             if (this.browser) {
@@ -815,11 +1008,5 @@ class BrowserController {
         }
     }
 }
-
-// Singleton instance
 const browserController = new BrowserController();
-
 module.exports = { browserController };
-
-
-// Handle Amazon C
