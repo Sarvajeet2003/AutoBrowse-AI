@@ -207,14 +207,42 @@ class BrowserController {
             // Determine Chrome executable path based on OS
             let chromePath = '';
             if (process.platform === 'darwin') {
-                chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+                // Check both possible Chrome locations on macOS
+                const possiblePaths = [
+                    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+                    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome Canary'
+                ];
+                
+                for (const path of possiblePaths) {
+                    console.log(`Checking Chrome path: ${path}`);
+                    if (fs.existsSync(path)) {
+                        chromePath = path;
+                        console.log(`Found Chrome at: ${path}`);
+                        break;
+                    } else {
+                        console.log(`Chrome not found at: ${path}`);
+                    }
+                }
+                
+                if (!chromePath) {
+                    console.log('Chrome not found in standard locations, checking user Applications folder');
+                    const userChromePath = `${os.homedir()}/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`;
+                    if (fs.existsSync(userChromePath)) {
+                        chromePath = userChromePath;
+                        console.log(`Found Chrome in user Applications: ${userChromePath}`);
+                    } else {
+                        console.log(`Chrome not found in user Applications: ${userChromePath}`);
+                    }
+                }
             } else if (process.platform === 'win32') {
+                // Windows code remains unchanged
                 chromePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
             } else if (process.platform === 'linux') {
                 chromePath = '/usr/bin/google-chrome';
             }
 
             if (!fs.existsSync(chromePath)) {
+                console.error(`Chrome executable not found at ${chromePath}`);
                 throw new Error(`Chrome executable not found at ${chromePath}`);
             }
 
@@ -222,6 +250,7 @@ class BrowserController {
             const userDataDir = path.join(os.tmpdir(), `chrome-automation-${Date.now()}`);
             if (!fs.existsSync(userDataDir)) {
                 fs.mkdirSync(userDataDir, { recursive: true });
+                console.log(`Created user data directory: ${userDataDir}`);
             }
 
             // Build Chrome command line arguments
@@ -229,8 +258,30 @@ class BrowserController {
                 `--user-data-dir=${userDataDir}`,
                 '--no-first-run',
                 '--no-default-browser-check',
-                '--remote-debugging-port=9222' // Enable remote debugging
+                '--remote-debugging-port=9222', // Enable remote debugging
+                '--disable-background-networking',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-breakpad',
+                '--disable-client-side-phishing-detection',
+                '--disable-default-apps',
+                '--disable-dev-shm-usage',
+                '--disable-extensions',
+                '--disable-features=Translate,BackForwardCache',
+                '--disable-hang-monitor',
+                '--disable-ipc-flooding-protection',
+                '--disable-popup-blocking',
+                '--disable-prompt-on-repost',
+                '--disable-renderer-backgrounding',
+                '--disable-sync',
+                '--force-color-profile=srgb',
+                '--metrics-recording-only',
+                '--no-sandbox',
+                '--password-store=basic',
+                '--use-mock-keychain'
             ];
+
+            console.log(`Launching Chrome with command: "${chromePath}" ${args.join(' ')}`);
 
             // Add proxy if configured
             if (options.proxy) {
@@ -253,11 +304,43 @@ class BrowserController {
             const chromeProcess = exec(`"${chromePath}" ${args.join(' ')}`);
             console.log(`Launched native Chrome browser with PID: ${chromeProcess.pid}`);
 
+            // Add error handling for the Chrome process
+            chromeProcess.on('error', (error) => {
+                console.error(`Chrome process error: ${error.message}`);
+            });
+
+            chromeProcess.stderr.on('data', (data) => {
+                console.error(`Chrome stderr: ${data}`);
+            });
+
             // Wait for Chrome to start and connect to it via CDP
-            await this.delay(3000);
+            console.log('Waiting for Chrome to start...');
+            await this.delay(5000); // Increase delay to ensure Chrome is fully started
 
             // Connect to the browser using Playwright's CDP connection
-            this.browser = await chromium.connectOverCDP('http://localhost:9222');
+            console.log('Attempting to connect to Chrome via CDP at http://localhost:9222');
+            try {
+                this.browser = await chromium.connectOverCDP('http://localhost:9222');
+                console.log('Successfully connected to Chrome via CDP');
+            } catch (cdpError) {
+                console.error(`Failed to connect via CDP: ${cdpError.message}`);
+                
+                // Try alternative connection methods
+                try {
+                    console.log('Trying alternative connection method...');
+                    const browserURL = 'http://localhost:9222';
+                    const response = await fetch(`${browserURL}/json/version`);
+                    const data = await response.json();
+                    const webSocketDebuggerUrl = data.webSocketDebuggerUrl;
+                    
+                    console.log(`Connecting to WebSocket URL: ${webSocketDebuggerUrl}`);
+                    this.browser = await chromium.connectOverCDP(webSocketDebuggerUrl);
+                    console.log('Successfully connected using WebSocket URL');
+                } catch (altError) {
+                    console.error(`Alternative connection failed: ${altError.message}`);
+                    throw cdpError;
+                }
+            }
             const contexts = this.browser.contexts();
             this.context = contexts.length > 0 ? contexts[0] : await this.browser.newContext();
 
@@ -500,6 +583,16 @@ class BrowserController {
                     if (input) {
                         await input.fill(text, { delay: 100 });
                         console.log(`Typed "${text}" into selector: ${singleSelector}`);
+                        
+                        // For Google search, immediately press Enter after typing
+                        if (page.url().includes('google') && 
+                            (singleSelector.includes('search') || singleSelector.includes('q'))) {
+                            await this.delay(500);
+                            await page.keyboard.press('Enter');
+                            console.log('Automatically pressed Enter for Google search');
+                            await this.delay(2000);
+                        }
+                        
                         return true;
                     }
                 } catch (selectorError) {
@@ -523,6 +616,16 @@ class BrowserController {
             // Type with a slight delay between characters to simulate human typing
             await page.fill(selector, text, { delay: 100 });
             console.log(`Typed "${text}" into ${selector}`);
+            
+            // For Google search, immediately press Enter after typing
+            if (page.url().includes('google') && 
+                (selector.includes('search') || selector.includes('q'))) {
+                await this.delay(500);
+                await page.keyboard.press('Enter');
+                console.log('Automatically pressed Enter for Google search');
+                await this.delay(2000);
+            }
+            
             return true;
         } catch (error) {
             console.error(`Type error on ${selector}: ${error.message}`);
@@ -567,6 +670,15 @@ class BrowserController {
                     if (input) {
                         await input.fill(text, { delay: 100 });
                         console.log(`Typed "${text}" into alternative input: ${inputSelector}`);
+                        
+                        // For Google search, immediately press Enter after typing
+                        if (page.url().includes('google')) {
+                            await this.delay(500);
+                            await page.keyboard.press('Enter');
+                            console.log('Automatically pressed Enter for Google search');
+                            await this.delay(2000);
+                        }
+                        
                         return true;
                     }
                 } catch (selectorError) {

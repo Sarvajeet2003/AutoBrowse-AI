@@ -19,7 +19,16 @@ router.post('/', async(req, res) => {
         console.log('Received command:', command);
 
         // Process the command
-        const result = await processCommand(command);
+        let result;
+        try {
+            result = await processCommand(command);
+        } catch (processError) {
+            console.error('Error processing command:', processError);
+            return res.status(500).json({
+                success: false,
+                error: 'Failed to process command: ' + processError.message
+            });
+        }
 
         if (!result || !result.actions || !Array.isArray(result.actions)) {
             return res.status(400).json({
@@ -95,6 +104,4 @@ router.get('/', (req, res) => {
     });
 });
 
-
-// Should be changed to:
 module.exports = router;
